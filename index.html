@@ -1,0 +1,1828 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Seiji Protocol — Decentralized Asset Recovery</title>
+    <meta name="description" content="Seiji Protocol is a decentralized asset recovery dApp powered by zero-knowledge proofs and smart contract escrow on Ethereum." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <!-- Leaflet Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
+    <!-- Geohash: inlined from latlon-geohash (ES module not compatible with <script> tags) -->
+    <style>
+      /* ============================
+         CSS RESET & VARIABLES
+         ============================ */
+      *, *::before, *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg-primary: #0d0e14;
+        --bg-secondary: #13141c;
+        --bg-card: rgba(22, 24, 35, 0.65);
+        --bg-card-hover: rgba(30, 33, 48, 0.75);
+        --bg-input: rgba(15, 16, 24, 0.8);
+        --border-glass: rgba(255, 255, 255, 0.06);
+        --border-hover: rgba(255, 255, 255, 0.12);
+        --text-primary: #f5f6fc;
+        --text-secondary: #9b9daa;
+        --text-tertiary: #5d5f6e;
+        --accent-primary: #fc72ff;
+        --accent-secondary: #587BFF;
+        --accent-gradient: linear-gradient(135deg, #fc72ff 0%, #587BFF 100%);
+        --accent-gradient-subtle: linear-gradient(135deg, rgba(252, 114, 255, 0.15) 0%, rgba(88, 123, 255, 0.15) 100%);
+        --success: #27ae60;
+        --success-glow: rgba(39, 174, 96, 0.3);
+        --warning: #f39c12;
+        --error: #e74c3c;
+        --error-glow: rgba(231, 76, 60, 0.25);
+        --radius-sm: 12px;
+        --radius-md: 16px;
+        --radius-lg: 24px;
+        --radius-xl: 28px;
+        --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+        --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.4);
+        --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+        --shadow-glow: 0 0 40px rgba(252, 114, 255, 0.12);
+        --transition-fast: 150ms ease;
+        --transition-normal: 250ms ease;
+        --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        min-height: 100vh;
+        overflow-x: hidden;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      /* ============================
+         ANIMATED GRADIENT BG
+         ============================ */
+      .bg-gradient-orbs {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+        pointer-events: none;
+        overflow: hidden;
+      }
+
+      .bg-gradient-orbs .orb {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(120px);
+        opacity: 0.35;
+        animation: orbFloat 20s ease-in-out infinite;
+      }
+
+      .bg-gradient-orbs .orb:nth-child(1) {
+        width: 600px;
+        height: 600px;
+        background: radial-gradient(circle, #fc72ff 0%, transparent 70%);
+        top: -15%;
+        left: -10%;
+        animation-delay: 0s;
+      }
+
+      .bg-gradient-orbs .orb:nth-child(2) {
+        width: 500px;
+        height: 500px;
+        background: radial-gradient(circle, #587BFF 0%, transparent 70%);
+        bottom: -10%;
+        right: -5%;
+        animation-delay: -7s;
+        animation-duration: 25s;
+      }
+
+      .bg-gradient-orbs .orb:nth-child(3) {
+        width: 400px;
+        height: 400px;
+        background: radial-gradient(circle, #7b61ff 0%, transparent 70%);
+        top: 40%;
+        left: 50%;
+        animation-delay: -14s;
+        animation-duration: 30s;
+      }
+
+      @keyframes orbFloat {
+        0%, 100% { transform: translate(0, 0) scale(1); }
+        25% { transform: translate(40px, -30px) scale(1.05); }
+        50% { transform: translate(-20px, 20px) scale(0.95); }
+        75% { transform: translate(30px, 40px) scale(1.03); }
+      }
+
+      /* ============================
+         MAIN LAYOUT
+         ============================ */
+      .app-container {
+        position: relative;
+        z-index: 1;
+        max-width: 520px;
+        margin: 0 auto;
+        padding: 24px 16px 80px;
+      }
+
+      /* ============================
+         TOP NAV BAR
+         ============================ */
+      .navbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 24px;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        background: rgba(13, 14, 20, 0.7);
+        border-bottom: 1px solid var(--border-glass);
+        margin: -24px -16px 28px;
+        width: calc(100% + 32px);
+      }
+
+      .navbar .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+      }
+
+      .navbar .logo-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: var(--accent-gradient);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        font-weight: 800;
+        color: white;
+        box-shadow: 0 0 20px rgba(252, 114, 255, 0.3);
+      }
+
+      .navbar .logo-text {
+        font-size: 20px;
+        font-weight: 700;
+        background: var(--accent-gradient);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        letter-spacing: -0.5px;
+      }
+
+      .navbar .network-badge {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        background: rgba(39, 174, 96, 0.1);
+        border: 1px solid rgba(39, 174, 96, 0.2);
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--success);
+      }
+
+      .navbar .network-badge .dot {
+        width: 6px;
+        height: 6px;
+        background: var(--success);
+        border-radius: 50%;
+        animation: pulse 2s ease-in-out infinite;
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(0.8); }
+      }
+
+      /* ============================
+         CONNECT WALLET BUTTON
+         ============================ */
+      .connect-section {
+        margin-bottom: 24px;
+      }
+
+      .btn-connect {
+        width: 100%;
+        padding: 16px 24px;
+        border: none;
+        border-radius: var(--radius-md);
+        font-family: 'Inter', sans-serif;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all var(--transition-normal);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .btn-connect.disconnected {
+        background: var(--accent-gradient);
+        color: white;
+        box-shadow: var(--shadow-glow);
+      }
+
+      .btn-connect.disconnected:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0 60px rgba(252, 114, 255, 0.25), var(--shadow-md);
+      }
+
+      .btn-connect.connected {
+        background: var(--bg-card);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--border-glass);
+        color: var(--text-primary);
+        cursor: default;
+      }
+
+      .btn-connect .wallet-info {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+      }
+
+      .btn-connect .wallet-info .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--success);
+        box-shadow: 0 0 8px var(--success-glow);
+      }
+
+      .btn-connect .wallet-info .address {
+        font-family: 'Inter', monospace;
+        font-size: 14px;
+        color: var(--text-secondary);
+      }
+
+      /* ============================
+         GLASS CARD STYLES
+         ============================ */
+      .glass-card {
+        background: var(--bg-card);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--border-glass);
+        border-radius: var(--radius-lg);
+        padding: 24px;
+        margin-bottom: 16px;
+        transition: all var(--transition-normal);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .glass-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+      }
+
+      .glass-card:hover {
+        border-color: var(--border-hover);
+        background: var(--bg-card-hover);
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-md);
+      }
+
+      .card-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+
+      .card-header .step-badge {
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        font-weight: 700;
+        flex-shrink: 0;
+      }
+
+      .card-header .step-badge.register { background: rgba(252, 114, 255, 0.15); color: var(--accent-primary); }
+      .card-header .step-badge.found { background: rgba(88, 123, 255, 0.15); color: var(--accent-secondary); }
+      .card-header .step-badge.confirm { background: rgba(39, 174, 96, 0.15); color: var(--success); }
+      .card-header .step-badge.cancel { background: rgba(243, 156, 18, 0.15); color: var(--warning); }
+      .card-header .step-badge.timeout { background: rgba(123, 97, 255, 0.15); color: #7b61ff; }
+      .card-header .step-badge.dispute { background: rgba(231, 76, 60, 0.15); color: var(--error); }
+
+      .card-header h2 {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text-primary);
+        letter-spacing: -0.3px;
+      }
+
+      .card-header p {
+        font-size: 12px;
+        color: var(--text-tertiary);
+        margin-top: 2px;
+      }
+
+      /* ============================
+         INPUT FIELDS
+         ============================ */
+      .input-group {
+        margin-bottom: 12px;
+      }
+
+      .input-group label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .input-group input {
+        width: 100%;
+        padding: 14px 16px;
+        background: var(--bg-input);
+        border: 1px solid var(--border-glass);
+        border-radius: var(--radius-sm);
+        color: var(--text-primary);
+        font-family: 'Inter', sans-serif;
+        font-size: 15px;
+        font-weight: 500;
+        outline: none;
+        transition: all var(--transition-fast);
+      }
+
+      .input-group input::placeholder {
+        color: var(--text-tertiary);
+        font-weight: 400;
+      }
+
+      .input-group input:focus {
+        border-color: var(--accent-primary);
+        box-shadow: 0 0 0 3px rgba(252, 114, 255, 0.1);
+        background: rgba(20, 22, 32, 0.9);
+      }
+
+      .input-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      /* ============================
+         ACTION BUTTONS
+         ============================ */
+      .btn-action {
+        width: 100%;
+        padding: 15px 24px;
+        border: none;
+        border-radius: var(--radius-sm);
+        font-family: 'Inter', sans-serif;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all var(--transition-normal);
+        margin-top: 8px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .btn-action::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 200%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+        transition: left 0.5s;
+      }
+
+      .btn-action:hover::after {
+        left: 100%;
+      }
+
+      .btn-action.primary {
+        background: var(--accent-gradient);
+        color: white;
+      }
+
+      .btn-action.primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 0 30px rgba(252, 114, 255, 0.2);
+      }
+
+      .btn-action.primary:active {
+        transform: translateY(0);
+      }
+
+      .btn-action.secondary {
+        background: rgba(88, 123, 255, 0.15);
+        color: var(--accent-secondary);
+        border: 1px solid rgba(88, 123, 255, 0.2);
+      }
+
+      .btn-action.secondary:hover {
+        background: rgba(88, 123, 255, 0.25);
+        border-color: rgba(88, 123, 255, 0.4);
+      }
+
+      .btn-action.success {
+        background: rgba(39, 174, 96, 0.15);
+        color: var(--success);
+        border: 1px solid rgba(39, 174, 96, 0.2);
+      }
+
+      .btn-action.success:hover {
+        background: rgba(39, 174, 96, 0.25);
+        border-color: rgba(39, 174, 96, 0.4);
+      }
+
+      .btn-action.warning {
+        background: rgba(243, 156, 18, 0.12);
+        color: var(--warning);
+        border: 1px solid rgba(243, 156, 18, 0.2);
+      }
+
+      .btn-action.warning:hover {
+        background: rgba(243, 156, 18, 0.2);
+        border-color: rgba(243, 156, 18, 0.35);
+      }
+
+      .btn-action.danger {
+        background: rgba(231, 76, 60, 0.12);
+        color: var(--error);
+        border: 1px solid rgba(231, 76, 60, 0.2);
+      }
+
+      .btn-action.danger:hover {
+        background: rgba(231, 76, 60, 0.2);
+        border-color: rgba(231, 76, 60, 0.35);
+      }
+
+      .btn-action:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        transform: none !important;
+        box-shadow: none !important;
+      }
+
+      /* ============================
+         STATUS / TOAST AREA
+         ============================ */
+      .toast-container {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        pointer-events: none;
+      }
+
+      .toast {
+        padding: 14px 24px;
+        border-radius: var(--radius-sm);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        font-size: 14px;
+        font-weight: 500;
+        max-width: 460px;
+        text-align: center;
+        pointer-events: auto;
+        animation: toastIn 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        border: 1px solid;
+        line-height: 1.5;
+        word-break: break-word;
+      }
+
+      .toast.success {
+        background: rgba(39, 174, 96, 0.12);
+        border-color: rgba(39, 174, 96, 0.25);
+        color: #4ade80;
+      }
+
+      .toast.error {
+        background: rgba(231, 76, 60, 0.12);
+        border-color: rgba(231, 76, 60, 0.25);
+        color: #f87171;
+      }
+
+      .toast.info {
+        background: rgba(88, 123, 255, 0.12);
+        border-color: rgba(88, 123, 255, 0.25);
+        color: #93b4ff;
+      }
+
+      .toast.exit {
+        animation: toastOut 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      }
+
+      @keyframes toastIn {
+        from { opacity: 0; transform: translateY(20px) scale(0.95); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+
+      @keyframes toastOut {
+        from { opacity: 1; transform: translateY(0) scale(1); }
+        to { opacity: 0; transform: translateY(20px) scale(0.95); }
+      }
+
+      /* ============================
+         SECTION DIVIDER
+         ============================ */
+      .section-divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 28px 0 16px;
+      }
+
+      .section-divider .line {
+        flex: 1;
+        height: 1px;
+        background: var(--border-glass);
+      }
+
+      .section-divider .label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        color: var(--text-tertiary);
+      }
+
+      /* ============================
+         INFO TAGS
+         ============================ */
+      .info-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        margin-bottom: 14px;
+      }
+
+      .info-tag.stake {
+        background: rgba(88, 123, 255, 0.1);
+        color: var(--accent-secondary);
+        border: 1px solid rgba(88, 123, 255, 0.15);
+      }
+
+      .info-tag.fee {
+        background: rgba(252, 114, 255, 0.1);
+        color: var(--accent-primary);
+        border: 1px solid rgba(252, 114, 255, 0.15);
+      }
+
+      /* ============================
+         COLLAPSE / ACCORDION
+         ============================ */
+      .advanced-section {
+        margin-top: 8px;
+      }
+
+      .advanced-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--border-glass);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        width: 100%;
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-weight: 600;
+        font-family: 'Inter', sans-serif;
+        transition: all var(--transition-fast);
+        margin-bottom: 12px;
+      }
+
+      .advanced-toggle:hover {
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text-primary);
+      }
+
+      .advanced-toggle .chevron {
+        transition: transform var(--transition-normal);
+        font-size: 10px;
+        margin-left: auto;
+      }
+
+      .advanced-toggle.open .chevron {
+        transform: rotate(180deg);
+      }
+
+      .advanced-content {
+        display: none;
+      }
+
+      .advanced-content.open {
+        display: block;
+        animation: slideDown 0.3s ease;
+      }
+
+      @keyframes slideDown {
+        from { opacity: 0; transform: translateY(-8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      /* ============================
+         FOOTER
+         ============================ */
+      .footer {
+        text-align: center;
+        padding: 32px 0 16px;
+        color: var(--text-tertiary);
+        font-size: 12px;
+      }
+
+      .footer a {
+        color: var(--accent-primary);
+        text-decoration: none;
+        transition: color var(--transition-fast);
+      }
+
+      .footer a:hover {
+        color: var(--accent-secondary);
+      }
+
+      /* ============================
+         ANIMATIONS
+         ============================ */
+      .fade-in-up {
+        opacity: 0;
+        transform: translateY(16px);
+        animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      }
+
+      @keyframes fadeInUp {
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .glass-card:nth-child(1) { animation-delay: 0.05s; }
+      .glass-card:nth-child(2) { animation-delay: 0.1s; }
+      .glass-card:nth-child(3) { animation-delay: 0.15s; }
+      .glass-card:nth-child(4) { animation-delay: 0.2s; }
+
+      /* ============================
+         RESPONSIVE
+         ============================ */
+      @media (max-width: 540px) {
+        .app-container {
+          padding: 16px 12px 60px;
+        }
+        .navbar {
+          padding: 12px 16px;
+          margin: -16px -12px 20px;
+          width: calc(100% + 24px);
+        }
+        .input-row {
+          grid-template-columns: 1fr;
+        }
+        .glass-card {
+          padding: 20px;
+          border-radius: var(--radius-md);
+        }
+      }
+
+      /* ============================
+         SCROLLBAR
+         ============================ */
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.15);
+      }
+
+      /* ============================
+         SPINNER FOR LOADING STATES
+         ============================ */
+      .spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255,255,255,0.2);
+        border-top-color: currentColor;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+        margin-right: 8px;
+        vertical-align: middle;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      /* ============================
+         GEOHASH MAP PICKER
+         ============================ */
+      .geohash-picker {
+        margin-bottom: 12px;
+      }
+
+      .geohash-picker label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .map-wrapper {
+        position: relative;
+        border-radius: var(--radius-sm);
+        overflow: hidden;
+        border: 1px solid var(--border-glass);
+        transition: border-color var(--transition-fast);
+      }
+
+      .map-wrapper:hover {
+        border-color: var(--border-hover);
+      }
+
+      .map-wrapper:focus-within {
+        border-color: var(--accent-primary);
+        box-shadow: 0 0 0 3px rgba(252, 114, 255, 0.1);
+      }
+
+      #geohashMap {
+        width: 100%;
+        height: 220px;
+        background: var(--bg-input);
+        cursor: crosshair !important;
+      }
+
+      /* Dark theme overrides for Leaflet */
+      .leaflet-container {
+        background: #0d0e14 !important;
+        font-family: 'Inter', sans-serif !important;
+      }
+
+      .leaflet-control-zoom {
+        border: none !important;
+        box-shadow: var(--shadow-sm) !important;
+      }
+
+      .leaflet-control-zoom a {
+        background: rgba(22, 24, 35, 0.9) !important;
+        color: var(--text-primary) !important;
+        border: 1px solid var(--border-glass) !important;
+        backdrop-filter: blur(10px) !important;
+        width: 32px !important;
+        height: 32px !important;
+        line-height: 32px !important;
+        font-size: 16px !important;
+      }
+
+      .leaflet-control-zoom a:hover {
+        background: rgba(30, 33, 48, 0.95) !important;
+        color: var(--accent-primary) !important;
+      }
+
+      .leaflet-control-attribution {
+        background: rgba(13, 14, 20, 0.8) !important;
+        color: var(--text-tertiary) !important;
+        font-size: 9px !important;
+        backdrop-filter: blur(10px) !important;
+      }
+
+      .leaflet-control-attribution a {
+        color: var(--text-secondary) !important;
+      }
+
+      .map-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        background: var(--bg-input);
+        border-top: 1px solid var(--border-glass);
+      }
+
+      .map-toolbar .geohash-display {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .map-toolbar .geohash-display .geo-icon {
+        font-size: 14px;
+      }
+
+      .map-toolbar .geohash-display input {
+        background: transparent;
+        border: none;
+        color: var(--text-primary);
+        font-family: 'Inter', monospace;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 1.5px;
+        width: 100%;
+        outline: none;
+        padding: 0;
+      }
+
+      .map-toolbar .geohash-display input::placeholder {
+        color: var(--text-tertiary);
+        font-weight: 400;
+        letter-spacing: 0.5px;
+      }
+
+      .btn-locate {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        border: 1px solid var(--border-glass);
+        border-radius: 8px;
+        background: transparent;
+        color: var(--text-secondary);
+        cursor: pointer;
+        font-size: 16px;
+        transition: all var(--transition-fast);
+        flex-shrink: 0;
+      }
+
+      .btn-locate:hover {
+        background: rgba(252, 114, 255, 0.1);
+        border-color: var(--accent-primary);
+        color: var(--accent-primary);
+      }
+
+      .btn-locate.locating {
+        animation: pulse 1s ease-in-out infinite;
+        color: var(--accent-primary);
+        border-color: var(--accent-primary);
+      }
+
+      .precision-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 10px;
+      }
+
+      .precision-row label {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-tertiary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+        margin-bottom: 0;
+      }
+
+      .precision-slider {
+        -webkit-appearance: none;
+        appearance: none;
+        flex: 1;
+        height: 4px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.06);
+        outline: none;
+        transition: background var(--transition-fast);
+      }
+
+      .precision-slider:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .precision-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--accent-primary);
+        cursor: pointer;
+        box-shadow: 0 0 8px rgba(252, 114, 255, 0.4);
+        transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+      }
+
+      .precision-slider::-webkit-slider-thumb:hover {
+        transform: scale(1.2);
+        box-shadow: 0 0 12px rgba(252, 114, 255, 0.6);
+      }
+
+      .precision-slider::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--accent-primary);
+        cursor: pointer;
+        border: none;
+        box-shadow: 0 0 8px rgba(252, 114, 255, 0.4);
+      }
+
+      .precision-value {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--accent-primary);
+        min-width: 28px;
+        text-align: center;
+        background: rgba(252, 114, 255, 0.1);
+        padding: 2px 8px;
+        border-radius: 6px;
+        border: 1px solid rgba(252, 114, 255, 0.15);
+      }
+
+      .precision-hint {
+        font-size: 11px;
+        color: var(--text-tertiary);
+        white-space: nowrap;
+      }
+
+      .geohash-info-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+        flex-wrap: wrap;
+      }
+
+      .geo-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 10px;
+        font-weight: 600;
+        background: rgba(88, 123, 255, 0.08);
+        color: var(--accent-secondary);
+        border: 1px solid rgba(88, 123, 255, 0.12);
+      }
+    </style>
+  </head>
+  <body>
+
+    <!-- Animated Background Orbs -->
+    <div class="bg-gradient-orbs" aria-hidden="true">
+      <div class="orb"></div>
+      <div class="orb"></div>
+      <div class="orb"></div>
+    </div>
+
+    <div class="app-container">
+
+      <!-- ===== NAVBAR ===== -->
+      <nav class="navbar">
+        <div class="logo">
+          <div class="logo-icon">S</div>
+          <span class="logo-text">Seiji</span>
+        </div>
+        <div class="network-badge" id="networkBadge">
+          <span class="dot"></span>
+          <span>Localhost</span>
+        </div>
+      </nav>
+
+      <!-- ===== CONNECT WALLET ===== -->
+      <div class="connect-section fade-in-up" style="animation-delay: 0s">
+        <button class="btn-connect disconnected" id="connectWalletBtn">
+          Connect Wallet
+        </button>
+      </div>
+
+      <!-- ===== CARD 1: REGISTER LOST ITEM ===== -->
+      <div class="glass-card fade-in-up" style="animation-delay: 0.06s">
+        <div class="card-header">
+          <div class="step-badge register">1</div>
+          <div>
+            <h2>Register a Lost Item</h2>
+            <p>Lock a bounty in escrow for finders</p>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label>Item Type</label>
+          <input type="text" id="itemType" placeholder="e.g. Wallet, Laptop, Phone" />
+        </div>
+
+        <!-- Geohash Map Picker -->
+        <div class="geohash-picker">
+          <label>📍 Lost Location — Click Map to Set Geohash</label>
+          <div class="map-wrapper">
+            <div id="geohashMap"></div>
+            <div class="map-toolbar">
+              <div class="geohash-display">
+                <span class="geo-icon">🌐</span>
+                <input type="text" id="geohash" placeholder="Click map or type geohash..." />
+              </div>
+              <button type="button" class="btn-locate" id="btnLocate" title="Use my location">
+                ◎
+              </button>
+            </div>
+          </div>
+          <div class="precision-row">
+            <label>Precision</label>
+            <input type="range" class="precision-slider" id="precisionSlider" min="1" max="9" value="5" />
+            <span class="precision-value" id="precisionValue">5</span>
+            <span class="precision-hint" id="precisionHint">~4.9km × 4.9km</span>
+          </div>
+          <div class="geohash-info-row" id="geohashInfoRow" style="display:none">
+            <span class="geo-tag" id="geoTagLat"></span>
+            <span class="geo-tag" id="geoTagLng"></span>
+            <span class="geo-tag" id="geoTagArea"></span>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label>Reward (ETH)</label>
+          <input type="text" id="rewardAmount" placeholder="e.g. 0.05" />
+        </div>
+
+        <button class="btn-action primary" id="registerBtn">
+          Register Item & Escrow Reward
+        </button>
+      </div>
+
+      <!-- ===== CARD 2: REPORT FOUND ===== -->
+      <div class="glass-card fade-in-up" style="animation-delay: 0.12s">
+        <div class="card-header">
+          <div class="step-badge found">2</div>
+          <div>
+            <h2>Report Item as Found</h2>
+            <p>Submit a ZK proximity proof with a stake</p>
+          </div>
+        </div>
+
+        <span class="info-tag stake">⚡ Requires 0.01 ETH Anti-Spam Stake</span>
+
+        <div class="input-group">
+          <label>Item ID</label>
+          <input type="number" id="foundItemId" placeholder="e.g. 0" />
+        </div>
+
+        <button class="btn-action secondary" id="foundBtn">
+          Report Found
+        </button>
+      </div>
+
+      <!-- ===== CARD 3: CONFIRM RETURN ===== -->
+      <div class="glass-card fade-in-up" style="animation-delay: 0.18s">
+        <div class="card-header">
+          <div class="step-badge confirm">3</div>
+          <div>
+            <h2>Confirm Return</h2>
+            <p>Owner verifies physical handover & releases reward</p>
+          </div>
+        </div>
+
+        <span class="info-tag fee">💎 1.5% Protocol Fee Applies</span>
+
+        <div class="input-group">
+          <label>Item ID</label>
+          <input type="number" id="returnItemId" placeholder="e.g. 0" />
+        </div>
+
+        <button class="btn-action success" id="confirmBtn">
+          Confirm Return & Release Reward
+        </button>
+      </div>
+
+      <!-- ===== ADVANCED SECTION ===== -->
+      <div class="section-divider">
+        <div class="line"></div>
+        <span class="label">Advanced Actions</span>
+        <div class="line"></div>
+      </div>
+
+      <div class="advanced-section fade-in-up" style="animation-delay: 0.24s">
+        <button class="advanced-toggle" id="advancedToggle" onclick="toggleAdvanced()">
+          🛠 Cancel, Timeout & Dispute Controls
+          <span class="chevron">▼</span>
+        </button>
+
+        <div class="advanced-content" id="advancedContent">
+
+          <!-- CANCEL REGISTRATION -->
+          <div class="glass-card">
+            <div class="card-header">
+              <div class="step-badge cancel">✕</div>
+              <div>
+                <h2>Cancel Registration</h2>
+                <p>Withdraw funds if no finder yet</p>
+              </div>
+            </div>
+            <div class="input-group">
+              <label>Item ID</label>
+              <input type="number" id="cancelItemId" placeholder="e.g. 0" />
+            </div>
+            <button class="btn-action warning" id="cancelBtn">
+              Cancel & Withdraw
+            </button>
+          </div>
+
+          <!-- CLAIM TIMEOUT -->
+          <div class="glass-card">
+            <div class="card-header">
+              <div class="step-badge timeout">⏱</div>
+              <div>
+                <h2>Claim Timeout Reward</h2>
+                <p>Finder claims if owner disappears (7-day wait)</p>
+              </div>
+            </div>
+            <div class="input-group">
+              <label>Item ID</label>
+              <input type="number" id="timeoutItemId" placeholder="e.g. 0" />
+            </div>
+            <button class="btn-action secondary" id="timeoutBtn">
+              Claim Timeout Reward
+            </button>
+          </div>
+
+          <!-- RAISE DISPUTE -->
+          <div class="glass-card">
+            <div class="card-header">
+              <div class="step-badge dispute">⚖</div>
+              <div>
+                <h2>Raise Dispute</h2>
+                <p>Escalate to DAO arbitration if handover fails</p>
+              </div>
+            </div>
+            <div class="input-group">
+              <label>Item ID</label>
+              <input type="number" id="disputeItemId" placeholder="e.g. 0" />
+            </div>
+            <button class="btn-action danger" id="disputeBtn">
+              Raise Dispute
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ===== FOOTER ===== -->
+      <div class="footer">
+        <p>Seiji Protocol · Decentralized Asset Recovery</p>
+        <p style="margin-top: 4px;">Built with ZK Proofs & Smart Contract Escrow</p>
+      </div>
+
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Ethers.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.11.1/ethers.umd.min.js"></script>
+
+    <!-- =============================================
+         GEOHASH MAP PICKER INITIALIZATION
+         ============================================= -->
+    <script>
+    (function initGeohashPicker() {
+      // ========================================
+      // INLINE GEOHASH LIBRARY (latlon-geohash)
+      // Inlined because the npm package uses ES module
+      // export, which doesn't work with <script> tags.
+      // ========================================
+      const _base32 = '0123456789bcdefghjkmnpqrstuvwxyz';
+
+      const Geohash = {
+        encode(lat, lon, precision) {
+          if (typeof precision === 'undefined') precision = 9;
+          lat = Number(lat); lon = Number(lon); precision = Number(precision);
+          if (isNaN(lat) || isNaN(lon) || isNaN(precision)) throw new Error('Invalid geohash');
+          let idx = 0, bit = 0, evenBit = true, geohash = '';
+          let latMin = -90, latMax = 90, lonMin = -180, lonMax = 180;
+          while (geohash.length < precision) {
+            if (evenBit) {
+              const lonMid = (lonMin + lonMax) / 2;
+              if (lon >= lonMid) { idx = idx * 2 + 1; lonMin = lonMid; } else { idx = idx * 2; lonMax = lonMid; }
+            } else {
+              const latMid = (latMin + latMax) / 2;
+              if (lat >= latMid) { idx = idx * 2 + 1; latMin = latMid; } else { idx = idx * 2; latMax = latMid; }
+            }
+            evenBit = !evenBit;
+            if (++bit === 5) { geohash += _base32.charAt(idx); bit = 0; idx = 0; }
+          }
+          return geohash;
+        },
+        decode(geohash) {
+          const bounds = Geohash.bounds(geohash);
+          let lat = (bounds.sw.lat + bounds.ne.lat) / 2;
+          let lon = (bounds.sw.lon + bounds.ne.lon) / 2;
+          lat = Number(lat.toFixed(Math.floor(2 - Math.log(bounds.ne.lat - bounds.sw.lat) / Math.LN10)));
+          lon = Number(lon.toFixed(Math.floor(2 - Math.log(bounds.ne.lon - bounds.sw.lon) / Math.LN10)));
+          return { lat, lon };
+        },
+        bounds(geohash) {
+          if (geohash.length === 0) throw new Error('Invalid geohash');
+          geohash = geohash.toLowerCase();
+          let evenBit = true;
+          let latMin = -90, latMax = 90, lonMin = -180, lonMax = 180;
+          for (let i = 0; i < geohash.length; i++) {
+            const chr = geohash.charAt(i);
+            const idx = _base32.indexOf(chr);
+            if (idx === -1) throw new Error('Invalid geohash');
+            for (let n = 4; n >= 0; n--) {
+              const bitN = (idx >> n) & 1;
+              if (evenBit) {
+                const lonMid = (lonMin + lonMax) / 2;
+                if (bitN === 1) lonMin = lonMid; else lonMax = lonMid;
+              } else {
+                const latMid = (latMin + latMax) / 2;
+                if (bitN === 1) latMin = latMid; else latMax = latMid;
+              }
+              evenBit = !evenBit;
+            }
+          }
+          return { sw: { lat: latMin, lon: lonMin }, ne: { lat: latMax, lon: lonMax } };
+        }
+      };
+      // ========================================
+
+      // Precision area descriptions
+      const PRECISION_HINTS = {
+        1: '~5,000km × 5,000km',
+        2: '~1,250km × 625km',
+        3: '~156km × 156km',
+        4: '~39km × 19.5km',
+        5: '~4.9km × 4.9km',
+        6: '~1.2km × 600m',
+        7: '~153m × 153m',
+        8: '~38m × 19m',
+        9: '~4.8m × 4.8m',
+      };
+
+      let map, marker, boundingRect;
+      let currentLat = 14.5995; // default: Manila
+      let currentLng = 120.9842;
+      let currentPrecision = 5;
+
+      const geohashInput = document.getElementById('geohash');
+      const precisionSlider = document.getElementById('precisionSlider');
+      const precisionValue = document.getElementById('precisionValue');
+      const precisionHint = document.getElementById('precisionHint');
+      const geohashInfoRow = document.getElementById('geohashInfoRow');
+      const geoTagLat = document.getElementById('geoTagLat');
+      const geoTagLng = document.getElementById('geoTagLng');
+      const geoTagArea = document.getElementById('geoTagArea');
+      const btnLocate = document.getElementById('btnLocate');
+
+      // ---- Initialize Leaflet Map with dark tiles ----
+      map = L.map('geohashMap', {
+        center: [currentLat, currentLng],
+        zoom: 12,
+        zoomControl: true,
+        attributionControl: true,
+      });
+
+      // Dark tile layer (CartoDB Dark Matter)
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 19,
+      }).addTo(map);
+
+      // Custom marker icon (gradient dot)
+      const markerIcon = L.divIcon({
+        className: '',
+        html: `<div style="
+          width: 18px; height: 18px;
+          background: linear-gradient(135deg, #fc72ff, #587BFF);
+          border-radius: 50%;
+          border: 2px solid rgba(255,255,255,0.9);
+          box-shadow: 0 0 16px rgba(252, 114, 255, 0.6), 0 0 32px rgba(88, 123, 255, 0.3);
+        "></div>`,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
+
+      // ---- Geohash encode/decode helper ----
+      function encodeGeohash(lat, lng, precision) {
+        try {
+          return Geohash.encode(lat, lng, precision);
+        } catch (e) {
+          console.error('Geohash encode error:', e);
+          return '';
+        }
+      }
+
+      function decodeGeohash(hash) {
+        try {
+          return Geohash.decode(hash);
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function getGeohashBounds(hash) {
+        try {
+          const b = Geohash.bounds(hash);
+          return [
+            [b.sw.lat, b.sw.lon],
+            [b.ne.lat, b.ne.lon],
+          ];
+        } catch (e) {
+          return null;
+        }
+      }
+
+      // ---- Update the map visuals ----
+      function updateFromLatLng(lat, lng) {
+        currentLat = lat;
+        currentLng = lng;
+        const hash = encodeGeohash(lat, lng, currentPrecision);
+        if (!hash) return;
+
+        geohashInput.value = hash;
+        updateMarker(lat, lng);
+        updateBoundingBox(hash);
+        updateInfoTags(lat, lng, hash);
+      }
+
+      function updateMarker(lat, lng) {
+        if (marker) {
+          marker.setLatLng([lat, lng]);
+        } else {
+          marker = L.marker([lat, lng], { icon: markerIcon }).addTo(map);
+        }
+      }
+
+      function updateBoundingBox(hash) {
+        const bounds = getGeohashBounds(hash);
+        if (!bounds) return;
+
+        if (boundingRect) {
+          boundingRect.setBounds(bounds);
+        } else {
+          boundingRect = L.rectangle(bounds, {
+            color: '#fc72ff',
+            weight: 1.5,
+            fillColor: '#fc72ff',
+            fillOpacity: 0.08,
+            dashArray: '6 4',
+          }).addTo(map);
+        }
+      }
+
+      function updateInfoTags(lat, lng, hash) {
+        geohashInfoRow.style.display = 'flex';
+        geoTagLat.textContent = `Lat ${lat.toFixed(5)}`;
+        geoTagLng.textContent = `Lng ${lng.toFixed(5)}`;
+        geoTagArea.textContent = `Area ${PRECISION_HINTS[currentPrecision]}`;
+      }
+
+      // ---- Map click handler ----
+      map.on('click', function (e) {
+        updateFromLatLng(e.latlng.lat, e.latlng.lng);
+      });
+
+      // ---- Precision slider ----
+      precisionSlider.addEventListener('input', function () {
+        currentPrecision = parseInt(this.value);
+        precisionValue.textContent = currentPrecision;
+        precisionHint.textContent = PRECISION_HINTS[currentPrecision];
+
+        if (currentLat && currentLng && geohashInput.value) {
+          updateFromLatLng(currentLat, currentLng);
+        }
+      });
+
+      // ---- Manual geohash input ----
+      geohashInput.addEventListener('input', function () {
+        const hash = this.value.trim().toLowerCase();
+        if (hash.length < 1) {
+          geohashInfoRow.style.display = 'none';
+          if (marker) { map.removeLayer(marker); marker = null; }
+          if (boundingRect) { map.removeLayer(boundingRect); boundingRect = null; }
+          return;
+        }
+
+        const decoded = decodeGeohash(hash);
+        if (decoded) {
+          currentLat = decoded.lat;
+          currentLng = decoded.lon;
+          currentPrecision = hash.length;
+
+          precisionSlider.value = Math.min(Math.max(currentPrecision, 1), 9);
+          precisionValue.textContent = precisionSlider.value;
+          precisionHint.textContent = PRECISION_HINTS[precisionSlider.value] || '';
+
+          updateMarker(decoded.lat, decoded.lon);
+          updateBoundingBox(hash);
+          updateInfoTags(decoded.lat, decoded.lon, hash);
+          map.setView([decoded.lat, decoded.lon], getZoomForPrecision(currentPrecision));
+        }
+      });
+
+      function getZoomForPrecision(p) {
+        const zoomMap = { 1: 3, 2: 5, 3: 7, 4: 9, 5: 12, 6: 14, 7: 16, 8: 18, 9: 19 };
+        return zoomMap[p] || 12;
+      }
+
+      // ---- Locate me button ----
+      btnLocate.addEventListener('click', function () {
+        if (!navigator.geolocation) {
+          alert('Geolocation is not supported by your browser.');
+          return;
+        }
+
+        btnLocate.classList.add('locating');
+        navigator.geolocation.getCurrentPosition(
+          function (pos) {
+            btnLocate.classList.remove('locating');
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            map.setView([lat, lng], getZoomForPrecision(currentPrecision));
+            updateFromLatLng(lat, lng);
+          },
+          function (err) {
+            btnLocate.classList.remove('locating');
+            alert('Could not get location: ' + err.message);
+          },
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
+      });
+
+      // ---- Fix Leaflet rendering in hidden/animated containers ----
+      setTimeout(() => map.invalidateSize(), 600);
+      window.addEventListener('resize', () => map.invalidateSize());
+    })();
+    </script>
+
+    <script>
+      // =============================================
+      // 1. CONFIGURATION
+      // =============================================
+      const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+
+      const CONTRACT_ABI = [
+        "function registerItem(string name, bytes32 description, string geohash) public payable",
+        "function reportFound(uint256 itemId, bytes32 location, bytes proof) public payable",
+        "function confirmReturn(uint256 itemId) public",
+        "function cancelRegistration(uint256 itemId) public",
+        "function claimTimeoutReward(uint256 itemId) public",
+        "function raiseDispute(uint256 itemId) public",
+        "function resolveDispute(uint256 itemId, bool rewardFinder) public",
+        "function items(uint256) public view returns (address owner, address finder, uint256 reward, uint256 stake, uint8 status, string name, bytes32 description, string geohash)",
+      ];
+
+      let provider;
+      let signer;
+      let seijiContract;
+
+      // =============================================
+      // 2. DOM ELEMENTS
+      // =============================================
+      const connectWalletBtn = document.getElementById("connectWalletBtn");
+      const registerBtn = document.getElementById("registerBtn");
+      const foundBtn = document.getElementById("foundBtn");
+      const confirmBtn = document.getElementById("confirmBtn");
+      const cancelBtn = document.getElementById("cancelBtn");
+      const timeoutBtn = document.getElementById("timeoutBtn");
+      const disputeBtn = document.getElementById("disputeBtn");
+
+      // =============================================
+      // 3. TOAST NOTIFICATIONS
+      // =============================================
+      function showToast(message, type = "info", duration = 5000) {
+        const container = document.getElementById("toastContainer");
+        const toast = document.createElement("div");
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+
+        setTimeout(() => {
+          toast.classList.add("exit");
+          setTimeout(() => toast.remove(), 300);
+        }, duration);
+      }
+
+      // =============================================
+      // 4. ADVANCED TOGGLE
+      // =============================================
+      function toggleAdvanced() {
+        const toggle = document.getElementById("advancedToggle");
+        const content = document.getElementById("advancedContent");
+        toggle.classList.toggle("open");
+        content.classList.toggle("open");
+      }
+
+      // =============================================
+      // 5. CONNECT METAMASK
+      // =============================================
+      function getContract() {
+        if (!signer) return null;
+        return new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+      }
+
+      connectWalletBtn.addEventListener("click", async () => {
+        if (signer) return; // already connected
+
+        if (window.ethereum == null) {
+          showToast("MetaMask not detected. Please install it first.", "error");
+          return;
+        }
+
+        try {
+          provider = new ethers.BrowserProvider(window.ethereum);
+          signer = await provider.getSigner();
+          seijiContract = getContract();
+
+          const address = await signer.getAddress();
+          const short = address.slice(0, 6) + "..." + address.slice(-4);
+
+          connectWalletBtn.classList.remove("disconnected");
+          connectWalletBtn.classList.add("connected");
+          connectWalletBtn.innerHTML = `
+            <div class="wallet-info">
+              <span class="status-dot"></span>
+              <span class="address">${short}</span>
+            </div>
+          `;
+
+          showToast("Wallet connected successfully!", "success");
+
+          // Detect network
+          const network = await provider.getNetwork();
+          const networkBadge = document.getElementById("networkBadge");
+          const chainId = Number(network.chainId);
+          const networkNames = {
+            1: "Ethereum",
+            5: "Goerli",
+            11155111: "Sepolia",
+            137: "Polygon",
+            31337: "Localhost",
+            1337: "Localhost",
+          };
+          networkBadge.querySelector("span:last-child").textContent =
+            networkNames[chainId] || `Chain ${chainId}`;
+
+        } catch (err) {
+          showToast("Error connecting wallet: " + err.message, "error");
+        }
+      });
+
+      // =============================================
+      // 6. HELPER — Ensure wallet is connected
+      // =============================================
+      function ensureConnected() {
+        if (!seijiContract) {
+          showToast("Please connect your wallet first.", "error");
+          return false;
+        }
+        return true;
+      }
+
+      function setLoading(btn, loading, originalText) {
+        if (loading) {
+          btn.disabled = true;
+          btn.innerHTML = `<span class="spinner"></span>Processing...`;
+        } else {
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }
+      }
+
+      // =============================================
+      // 7. REGISTER ITEM
+      // =============================================
+      registerBtn.addEventListener("click", async () => {
+        if (!ensureConnected()) return;
+
+        const itemType = document.getElementById("itemType").value.trim();
+        const geohash = document.getElementById("geohash").value.trim();
+        const rewardEth = document.getElementById("rewardAmount").value.trim();
+
+        if (!itemType || !geohash || !rewardEth) {
+          showToast("Please fill in all fields.", "error");
+          return;
+        }
+
+        try {
+          setLoading(registerBtn, true);
+          showToast("Awaiting wallet approval...", "info");
+
+          const dummyDescHash = ethers.id("Secret Item Description");
+          const rewardWei = ethers.parseEther(rewardEth);
+
+          const tx = await seijiContract.registerItem(
+            itemType,
+            dummyDescHash,
+            geohash,
+            { value: rewardWei }
+          );
+
+          showToast(`Tx sent! Hash: ${tx.hash.slice(0, 18)}...`, "info");
+          await tx.wait();
+          showToast("Item registered & reward locked in escrow!", "success");
+
+          // Clear inputs
+          document.getElementById("itemType").value = "";
+          document.getElementById("geohash").value = "";
+          document.getElementById("rewardAmount").value = "";
+        } catch (err) {
+          showToast("Transaction failed: " + (err.reason || err.message), "error");
+        } finally {
+          setLoading(registerBtn, false, "Register Item & Escrow Reward");
+        }
+      });
+
+      // =============================================
+      // 8. REPORT FOUND
+      // =============================================
+      foundBtn.addEventListener("click", async () => {
+        if (!ensureConnected()) return;
+
+        const itemId = document.getElementById("foundItemId").value;
+        if (itemId === "") {
+          showToast("Please enter an Item ID.", "error");
+          return;
+        }
+
+        try {
+          setLoading(foundBtn, true);
+          showToast("Awaiting wallet approval...", "info");
+
+          const dummyLocationHash = ethers.id("Exact GPS Coordinates");
+          const dummyZkProof = ethers.toUtf8Bytes("ValidZKProof123");
+          const stakeWei = ethers.parseEther("0.01");
+
+          const tx = await seijiContract.reportFound(
+            itemId,
+            dummyLocationHash,
+            dummyZkProof,
+            { value: stakeWei }
+          );
+
+          showToast(`Tx sent! Hash: ${tx.hash.slice(0, 18)}...`, "info");
+          await tx.wait();
+          showToast("Item reported found & stake locked!", "success");
+          document.getElementById("foundItemId").value = "";
+        } catch (err) {
+          showToast("Transaction failed: " + (err.reason || err.message), "error");
+        } finally {
+          setLoading(foundBtn, false, "Report Found");
+        }
+      });
+
+      // =============================================
+      // 9. CONFIRM RETURN
+      // =============================================
+      confirmBtn.addEventListener("click", async () => {
+        if (!ensureConnected()) return;
+
+        const itemId = document.getElementById("returnItemId").value;
+        if (itemId === "") {
+          showToast("Please enter an Item ID.", "error");
+          return;
+        }
+
+        try {
+          setLoading(confirmBtn, true);
+          showToast("Awaiting wallet approval...", "info");
+
+          // Fresh contract connection for reliability
+          const freshProvider = new ethers.BrowserProvider(window.ethereum);
+          const freshSigner = await freshProvider.getSigner();
+          const liveContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, freshSigner);
+
+          const tx = await liveContract.confirmReturn(itemId);
+          showToast(`Tx sent! Hash: ${tx.hash.slice(0, 18)}...`, "info");
+          await tx.wait();
+          showToast("Return confirmed! Reward released to finder.", "success");
+          document.getElementById("returnItemId").value = "";
+        } catch (err) {
+          showToast("Transaction failed: " + (err.reason || err.message), "error");
+        } finally {
+          setLoading(confirmBtn, false, "Confirm Return & Release Reward");
+        }
+      });
+
+      // =============================================
+      // 10. CANCEL REGISTRATION
+      // =============================================
+      cancelBtn.addEventListener("click", async () => {
+        if (!ensureConnected()) return;
+
+        const itemId = document.getElementById("cancelItemId").value;
+        if (itemId === "") {
+          showToast("Please enter an Item ID.", "error");
+          return;
+        }
+
+        try {
+          setLoading(cancelBtn, true);
+          showToast("Awaiting wallet approval...", "info");
+
+          const tx = await seijiContract.cancelRegistration(itemId);
+          showToast(`Tx sent! Hash: ${tx.hash.slice(0, 18)}...`, "info");
+          await tx.wait();
+          showToast("Registration cancelled. Funds refunded!", "success");
+          document.getElementById("cancelItemId").value = "";
+        } catch (err) {
+          showToast("Transaction failed: " + (err.reason || err.message), "error");
+        } finally {
+          setLoading(cancelBtn, false, "Cancel & Withdraw");
+        }
+      });
+
+      // =============================================
+      // 11. CLAIM TIMEOUT REWARD
+      // =============================================
+      timeoutBtn.addEventListener("click", async () => {
+        if (!ensureConnected()) return;
+
+        const itemId = document.getElementById("timeoutItemId").value;
+        if (itemId === "") {
+          showToast("Please enter an Item ID.", "error");
+          return;
+        }
+
+        try {
+          setLoading(timeoutBtn, true);
+          showToast("Awaiting wallet approval...", "info");
+
+          const tx = await seijiContract.claimTimeoutReward(itemId);
+          showToast(`Tx sent! Hash: ${tx.hash.slice(0, 18)}...`, "info");
+          await tx.wait();
+          showToast("Timeout reward claimed successfully!", "success");
+          document.getElementById("timeoutItemId").value = "";
+        } catch (err) {
+          showToast("Transaction failed: " + (err.reason || err.message), "error");
+        } finally {
+          setLoading(timeoutBtn, false, "Claim Timeout Reward");
+        }
+      });
+
+      // =============================================
+      // 12. RAISE DISPUTE
+      // =============================================
+      disputeBtn.addEventListener("click", async () => {
+        if (!ensureConnected()) return;
+
+        const itemId = document.getElementById("disputeItemId").value;
+        if (itemId === "") {
+          showToast("Please enter an Item ID.", "error");
+          return;
+        }
+
+        try {
+          setLoading(disputeBtn, true);
+          showToast("Awaiting wallet approval...", "info");
+
+          const tx = await seijiContract.raiseDispute(itemId);
+          showToast(`Tx sent! Hash: ${tx.hash.slice(0, 18)}...`, "info");
+          await tx.wait();
+          showToast("Dispute raised! Awaiting DAO arbitration.", "success");
+          document.getElementById("disputeItemId").value = "";
+        } catch (err) {
+          showToast("Transaction failed: " + (err.reason || err.message), "error");
+        } finally {
+          setLoading(disputeBtn, false, "Raise Dispute");
+        }
+      });
+    </script>
+  </body>
+</html>
